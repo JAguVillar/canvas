@@ -17,6 +17,7 @@
 <body>
   <canvas id="myCanvas" width="600" height="400"></canvas>
   <button id="exportButton">Exportar JSON</button>
+  <button id="importButton">Importar JSON</button>
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
@@ -33,7 +34,7 @@
         var x = event.clientX - canvas.offsetLeft;
         var y = event.clientY - canvas.offsetTop;
 
-        var circle = { x: x, y: y, radius: 20, connections: [], name: "" };
+        var circle = { x: x, y: y, radius: 20, connections: { to: [], from: [] }, name: "" };
         circles.push(circle);
         drawCircle(circle);
       });
@@ -82,7 +83,8 @@
           );
 
           if (connectedCircle && connectingCircle !== connectedCircle) {
-            connectingCircle.connections.push(connectedCircle);
+            connectingCircle.connections.to.push(connectedCircle);
+            connectedCircle.connections.from.push(connectingCircle);
             redrawCanvas();
           }
 
@@ -116,20 +118,12 @@
           alert("JSON exportado a la consola.");
         });
 
-      // document.addEventListener("keydown", function (event) {
-      //   if (event.key === "Delete" && selectedCircle) {
-      //     deleteSelectedCircle();
-      //   }
-      // });
-
-      // function deleteSelectedCircle() {
-      //   var index = circles.indexOf(selectedCircle);
-      //   if (index !== -1) {
-      //     circles.splice(index, 1);
-      //     selectedCircle = null; // Clear the selectedCircle after deletion
-      //     redrawCanvas();
-      //   }
-      // }
+      document
+        .getElementById("importButton")
+        .addEventListener("click", function () {
+          var json = prompt("Introduce el JSON:");
+          parseJSON(json);
+        });
 
       function drawCircle(circle) {
         ctx.beginPath();
@@ -148,11 +142,6 @@
         ctx.textBaseline = "middle";
         ctx.fillText(circle.name, circle.x, circle.y);
       }
-
-      // function highlightSelectedCircle() {
-      //   // Redraw the canvas to update the selected circle's appearance
-      //   redrawCanvas();
-      // }
 
       function drawArrow(startX, startY, endX, endY) {
         var angle = Math.atan2(endY - startY, endX - startX);
@@ -188,18 +177,72 @@
       }
 
       function generateJSON() {
-        return JSON.stringify(
-          circles,
-          function (key, value) {
-            if (key === "connections") {
-              return value.map(function (circle) {
-                return circles.indexOf(circle);
-              });
-            }
-            return value;
-          },
-          2
-        );
+        var jsonNodes = circles.map(function (circle, index) {
+          return {
+            x: circle.x,
+            y: circle.y,
+            text: circle.name,
+            isAcceptState: false,
+            textOnly: false
+          };
+        });
+
+        var jsonLinks = [];
+        circles.forEach(function (circle, index) {
+          circle.connections.to.forEach(function (connectedCircle) {
+            var link = {
+              type: "Link",
+              nodeA: index,
+              nodeB: circles.indexOf(connectedCircle),
+              text: "",
+              lineAngleAdjust: 0,
+              parallelPart: 0.5,
+              perpendicularPart: 0
+            };
+            jsonLinks.push(link);
+          });
+        });
+
+        var jsonStructure = {
+          nodes: jsonNodes,
+          links: jsonLinks,
+          nodeRadius: 52
+        };
+
+        return JSON.stringify(jsonStructure, null, 2);
+      }
+
+      function parseJSON(json) {
+        try {
+          var parsedData = JSON.parse(json);
+
+          // Clear existing circles
+          circles = [];
+
+          // Create new circles
+          parsedData.nodes.forEach(function (node) {
+            var circle = {
+              x: node.x,
+              y: node.y,
+              radius: 20,
+              connections: { to: [], from: [] },
+              name: node.text
+            };
+            circles.push(circle);
+          });
+
+          // Update connections
+          parsedData.links.forEach(function (link) {
+            var sourceCircle = circles[link.nodeA];
+            var targetCircle = circles[link.nodeB];
+            sourceCircle.connections.to.push(targetCircle);
+            targetCircle.connections.from.push(sourceCircle);
+          });
+
+          redrawCanvas();
+        } catch (error) {
+          console.error("Error parsing JSON:", error);
+        }
       }
 
       function redrawCanvas() {
@@ -210,7 +253,7 @@
         });
 
         circles.forEach(function (circle) {
-          circle.connections.forEach(function (connectedCircle) {
+          circle.connections.to.forEach(function (connectedCircle) {
             drawArrow(
               circle.x,
               circle.y,
